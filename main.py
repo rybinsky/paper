@@ -3,7 +3,7 @@ import time
 import torch
 from torch.utils.data import DataLoader
 from tqdm.notebook import tqdm
-
+import os
 import numpy as np
 
 import warnings
@@ -31,27 +31,32 @@ def main(args):
             dst_train, batch_size=args.batch_train, shuffle=True, num_workers=2
         )
     
-    # dsa_params = ParamDiffAug()
-    # teacher = get_network(args.teacher, channel, num_classes, im_size, dist=False).to(device)
-    # student = get_network(args.student, channel, num_classes, im_size, dist=False).to(device)
-    # # обучить учителя
-    # teacher, train_loss, train_acc, val_loss, val_acc = study_teacher(teacher, trainloader, testloader, dsa_params, device)
-    # print(f"Train loss: {train_loss[-1]}, train accuracy: {train_acc[-1]}, validation loss: {val_loss[-1]}, validation loss: {val_acc[-1]}")
-    
-    print("Starting distillation...")
-    # start = time.time()
-    # accuracy_list = []
-    # loss_list = []
-    # for _ in range(args.count):
-    #     train_loss, train_acc, val_loss, val_acc =\
-    #         study_student_with_teacher(teacher, student, synloader, testloader, dsa_params, device, args.weight, args.temp)
-    #     accuracy_list.append(val_acc[-1])
-    #     loss_list.append(val_loss[-1])
+    dsa_params = ParamDiffAug()
+    teacher = get_network(args.teacher, channel, num_classes, im_size, dist=False).to(device)
+    # обучить учителя
+    if os.path.exists('./teacher.pt'):
+        teacher.load_state_dict(torch.load('./teacher.pt'))
+    else:
+        teacher, train_loss, train_acc, val_loss, val_acc = study_teacher(teacher, trainloader, testloader, dsa_params, device)
+        print(f"Train loss: {train_loss[-1]:.4f}, train accuracy: {train_acc[-1]:.4f}, validation loss: {val_loss[-1]:.4f}, validation loss: {val_acc[-1]:.4f}")
+        torch.save(teacher.state_dict(), './teacher.pt')
 
-    # end = time.time()
-    # print(f"Mean accuracy for {args.student} with {args.teacher} by {args.count} times in a row: {np.mean(accuracy_list)}")
-    # print(f"Total time: {end - start}")
-    # print(f"Finish!")
+        
+    print("Starting distillation...")
+    start = time.time()
+    accuracy_list = []
+    loss_list = []
+    for _ in range(args.count):
+        student = get_network(args.student, channel, num_classes, im_size, dist=False).to(device)
+        train_loss, train_acc, val_loss, val_acc =\
+            study_student_with_teacher(args.syn_imgs, teacher, student, synloader, testloader, dsa_params, device, args.weight, args.temp)
+        accuracy_list.append(val_acc[-1])
+        loss_list.append(val_loss[-1])
+
+    end = time.time()
+    print(f"Mean accuracy for {args.student} with {args.teacher} by {args.count} times in a row: {np.mean(accuracy_list)}")
+    print(f"Total time: {end - start}")
+    print(f"Finish!")
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Parameter Processing')
